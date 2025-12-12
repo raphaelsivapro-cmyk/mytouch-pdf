@@ -2,7 +2,6 @@
   "name": "mytouch-pdf",
   "private": true,
   "dependencies": {
-    "pdfkit": "^0.15.0",
-    "@sparticuz/chromium": "^123.0.0"
+    "pdfkit": "^0.15.0"
   }
 }
