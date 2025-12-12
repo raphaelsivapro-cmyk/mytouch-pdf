@@ -1,19 +1,64 @@
-const PDFDocument = require("pdfkit");
+import chromium from "@sparticuz/chromium";
+import playwright from "playwright-core";
 
-module.exports = (req, res) => {
+export default async function handler(req, res) {
+  // CORS (utile si ton front est sur un autre domaine)
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
   if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", 'attachment; filename="rapport-mytouch.pdf"');
+  try {
+    // 1) récupérer le HTML
+    let body = "";
+    await new Promise((resolve, reject) => {
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", resolve);
+      req.on("error", reject);
+    });
 
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
-  doc.pipe(res);
+    let html = "";
+    try {
+      const parsed = JSON.parse(body || "{}");
+      html = parsed.html || "";
+    } catch {
+      // si jamais Lovable envoie du texte brut
+      html = body || "";
+    }
 
-  doc.fontSize(22).text("MyTouch — PDF test");
-  doc.moveDown();
-  doc.fontSize(12).text("Si tu vois ce PDF, l’API Vercel fonctionne.");
-  doc.end();
-};
+    if (!html || html.trim().length < 20) {
+      return res.status(400).json({ error: "Missing or empty HTML" });
+    }
+
+    // 2) lancer chromium compatible Vercel
+    const browser = await playwright.chromium.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+
+    const page = await browser.newPage();
+
+    // 3) rendre le HTML
+    await page.setContent(html, { waitUntil: "networkidle" });
+
+    // 4) générer le PDF
+    const pdfBuffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "18mm", right: "14mm", bottom: "18mm", left: "14mm" },
+    });
+
+    await browser.close();
+
+    // 5) renvoyer le PDF
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="rapport-mytouch.pdf"');
+    return res.status(200).send(Buffer.from(pdfBuffer));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "PDF generation failed", details: String(err) });
+  }
+}
