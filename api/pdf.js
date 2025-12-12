@@ -1,32 +1,19 @@
-import { chromium } from "playwright-core";
-import chromiumPkg from "@sparticuz/chromium";
+const PDFDocument = require("pdfkit");
 
-export default async function handler(req, res) {
-  try {
-    const { url, filename = "document.pdf" } = req.query;
-    if (!url) return res.status(400).send("Missing url");
+module.exports = (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(204).end();
 
-    const browser = await chromium.launch({
-      args: chromiumPkg.args,
-      executablePath: await chromiumPkg.executablePath(),
-      headless: true
-    });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", 'attachment; filename="rapport-mytouch.pdf"');
 
-    const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle" });
+  const doc = new PDFDocument({ size: "A4", margin: 40 });
+  doc.pipe(res);
 
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "12mm", right: "12mm", bottom: "12mm", left: "12mm" }
-    });
-
-    await browser.close();
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.status(200).send(pdf);
-  } catch (e) {
-    res.status(500).send(String(e));
-  }
-}
+  doc.fontSize(22).text("MyTouch — PDF test");
+  doc.moveDown();
+  doc.fontSize(12).text("Si tu vois ce PDF, l’API Vercel fonctionne.");
+  doc.end();
+};
