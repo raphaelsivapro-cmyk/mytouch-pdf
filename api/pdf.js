@@ -1,8 +1,8 @@
-import chromium from "@sparticuz/chromium";
-import playwright from "playwright-core";
+const chromium = require("@sparticuz/chromium");
+const playwright = require("playwright-core");
 
-export default async function handler(req, res) {
-  // CORS (utile si ton front est sur un autre domaine)
+module.exports = async (req, res) => {
+  // CORS (utile si Lovable est sur un autre domaine)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -11,11 +11,11 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
   try {
-    // 1) récupérer le HTML
-    let body = "";
-    await new Promise((resolve, reject) => {
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", resolve);
+    // 1) Lire le body (Lovable envoie le HTML en POST)
+    const body = await new Promise((resolve, reject) => {
+      let data = "";
+      req.on("data", (chunk) => (data += chunk));
+      req.on("end", () => resolve(data));
       req.on("error", reject);
     });
 
@@ -24,7 +24,6 @@ export default async function handler(req, res) {
       const parsed = JSON.parse(body || "{}");
       html = parsed.html || "";
     } catch {
-      // si jamais Lovable envoie du texte brut
       html = body || "";
     }
 
@@ -32,28 +31,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing or empty HTML" });
     }
 
-    // 2) lancer chromium compatible Vercel
+    // 2) Lancer Chromium compatible Vercel
     const browser = await playwright.chromium.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
-      headless: true,
+      headless: true
     });
 
     const page = await browser.newPage();
 
-    // 3) rendre le HTML
+    // 3) Rendre le HTML
     await page.setContent(html, { waitUntil: "networkidle" });
 
-    // 4) générer le PDF
+    // 4) Générer le PDF
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      margin: { top: "18mm", right: "14mm", bottom: "18mm", left: "14mm" },
+      margin: { top: "18mm", right: "14mm", bottom: "18mm", left: "14mm" }
     });
 
     await browser.close();
 
-    // 5) renvoyer le PDF
+    // 5) Renvoyer le PDF
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", 'attachment; filename="rapport-mytouch.pdf"');
     return res.status(200).send(Buffer.from(pdfBuffer));
@@ -61,4 +60,4 @@ export default async function handler(req, res) {
     console.error(err);
     return res.status(500).json({ error: "PDF generation failed", details: String(err) });
   }
-}
+};
